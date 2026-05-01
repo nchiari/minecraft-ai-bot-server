@@ -8,6 +8,7 @@ It is based on `Mming-Lab/minecraft-bedrock-education-mcp` and uses `tutinoko204
 
 - MCP tools for player, block, world, camera, system, wiki, sequence, and building operations
 - Minecraft WebSocket connection through SocketBE
+- Lightweight event history for recent chat, block, item, and teleport activity
 - Optional local HTTP control API for simple automation wrappers
 - Quiet startup behavior: the Minecraft Education Agent is not spawned automatically
 - English server startup and in-game connection messages
@@ -100,6 +101,7 @@ Core tools:
 - `system` - Scoreboard and screen display operations
 - `minecraft_wiki` - Minecraft Wiki search
 - `sequence` - Multi-tool sequence execution
+- `events` - Recent Minecraft event history
 
 Building tools:
 
@@ -117,6 +119,28 @@ Building tools:
 - `build_transform`
 
 The original `agent` tool is disabled in this version so the Minecraft Education Agent does not appear automatically.
+
+## Event History
+
+The `events` tool keeps a short in-memory history of recent Minecraft activity so an MCP client can answer questions like "what block did I just break?" or "what happened recently?".
+
+Supported actions:
+
+- `list_supported` - Show the event types currently tracked
+- `recent` - Return recent events, optionally filtered by type
+- `clear` - Clear the current event history
+
+Tracked event types:
+
+- `PlayerJoin`
+- `PlayerLeave`
+- `PlayerChat`
+- `BlockBroken`
+- `BlockPlaced`
+- `ItemAcquired`
+- `PlayerTeleported`
+
+The history is limited to the most recent 100 events and is not saved to disk.
 
 ## Credits
 

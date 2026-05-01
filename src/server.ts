@@ -42,6 +42,28 @@ import {
 import { SchemaToZodConverter } from "./utils/schema-converter";
 import { enrichErrorWithHints } from "./utils/error-hints";
 
+const MAX_EVENT_HISTORY = 100;
+const OBSERVED_EVENT_NAMES = [
+  "PlayerJoin",
+  "PlayerLeave",
+  "PlayerChat",
+  "BlockBroken",
+  "BlockPlaced",
+  "ItemAcquired",
+  "PlayerTeleported",
+] as const;
+
+type ObservedEventName = typeof OBSERVED_EVENT_NAMES[number];
+
+interface MinecraftEventRecord {
+  id: string;
+  type: ObservedEventName;
+  timestamp: string;
+  world?: string | null;
+  player?: string | null;
+  data: Record<string, any>;
+}
+
 /**
  * Minecraft Bedrock Edition用MCPサーバー
  *
@@ -76,6 +98,7 @@ export class MinecraftMCPServer {
   private currentWorld: World | null = null;
   private currentAgent: Agent | null = null;
   private mcpServer: McpServer;
+  private eventHistory: MinecraftEventRecord[] = [];
 
   constructor() {
     // MCP公式SDKのサーバーを初期化
@@ -175,6 +198,20 @@ export class MinecraftMCPServer {
 
     this.socketBE.on(ServerEvent.PlayerLeave, (ev: any) => {
       this.handlePlayerLeave(ev);
+    });
+
+    const observedEvents: Array<[ServerEvent, ObservedEventName]> = [
+      [ServerEvent.PlayerChat, "PlayerChat"],
+      [ServerEvent.BlockBroken, "BlockBroken"],
+      [ServerEvent.BlockPlaced, "BlockPlaced"],
+      [ServerEvent.ItemAcquired, "ItemAcquired"],
+      [ServerEvent.PlayerTeleported, "PlayerTeleported"],
+    ];
+
+    observedEvents.forEach(([serverEvent, eventName]) => {
+      (this.socketBE as any)?.on(serverEvent, (ev: any) => {
+        this.recordMinecraftEvent(eventName, ev);
+      });
     });
   }
 
@@ -283,6 +320,8 @@ export class MinecraftMCPServer {
       console.error(`[MC AI Bot] Player joined: ${ev.player.name}`);
     }
 
+    this.recordMinecraftEvent("PlayerJoin", ev);
+
     // Minecraft側に参加確認メッセージを送信
     await this.sendWorldMessage(
       `§b[MC AI Bot] §f${ev.player.name} connected.`
@@ -311,6 +350,8 @@ export class MinecraftMCPServer {
     if (process.stdin.isTTY !== false) {
       console.error(`[MC AI Bot] Player left: ${ev.player.name}`);
     }
+
+    this.recordMinecraftEvent("PlayerLeave", ev);
 
     this.connectedPlayer = null;
     this.currentWorld = null;
@@ -385,6 +426,81 @@ export class MinecraftMCPServer {
    * MCP SDKに基本ツールを登録
    */
   private registerBasicTools(): void {
+    this.mcpServer.registerTool(
+      "events",
+      {
+        title: "Minecraft Events",
+        description:
+          "Inspect the recent Minecraft event history captured by the server. Useful for understanding what just happened in the world, such as chat messages, placed/broken blocks, acquired items, and teleports.",
+        inputSchema: {
+          action: z
+            .enum(["list_supported", "recent", "clear"])
+            .describe("Action to run: list_supported, recent, or clear"),
+          type: z
+            .enum(OBSERVED_EVENT_NAMES)
+            .optional()
+            .describe("Optional event type filter for recent events"),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_EVENT_HISTORY)
+            .optional()
+            .describe("Maximum number of events to return, from 1 to 100"),
+        },
+      },
+      async ({
+        action,
+        type,
+        limit,
+      }: {
+        action: "list_supported" | "recent" | "clear";
+        type?: ObservedEventName;
+        limit?: number;
+      }) => {
+        if (action === "list_supported") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Supported event types:\n${OBSERVED_EVENT_NAMES.map((name) => `- ${name}`).join("\n")}`,
+              },
+            ],
+          };
+        }
+
+        if (action === "clear") {
+          const cleared = this.eventHistory.length;
+          this.eventHistory = [];
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Cleared ${cleared} recorded Minecraft event(s).`,
+              },
+            ],
+          };
+        }
+
+        const events = this.getRecentMinecraftEvents(type, limit);
+        const responseText =
+          events.length > 0
+            ? `Recent Minecraft events:\n${JSON.stringify(events, null, 2)}`
+            : type
+              ? `No recent Minecraft events found for ${type}.`
+              : "No recent Minecraft events recorded.";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: responseText,
+            },
+          ],
+        };
+      }
+    );
+
     // send_message ツール
     this.mcpServer.registerTool(
       "send_message",
@@ -660,6 +776,106 @@ export class MinecraftMCPServer {
           }
         : null,
       agentAvailable: !!this.currentAgent,
+      recordedEvents: this.eventHistory.length,
+    };
+  }
+
+  public getRecentMinecraftEvents(
+    type?: ObservedEventName,
+    limit: number = 20
+  ): MinecraftEventRecord[] {
+    const cappedLimit = Math.min(Math.max(limit || 20, 1), MAX_EVENT_HISTORY);
+    const events = type
+      ? this.eventHistory.filter((event) => event.type === type)
+      : this.eventHistory;
+
+    return events.slice(-cappedLimit).reverse();
+  }
+
+  private recordMinecraftEvent(type: ObservedEventName, ev: any): void {
+    const record: MinecraftEventRecord = {
+      id: randomUUID(),
+      type,
+      timestamp: new Date().toISOString(),
+      world: ev?.world?.name || this.currentWorld?.name || null,
+      player: this.extractPlayerName(ev?.player || ev?.sender),
+      data: this.extractEventData(type, ev),
+    };
+
+    this.eventHistory.push(record);
+    if (this.eventHistory.length > MAX_EVENT_HISTORY) {
+      this.eventHistory.splice(0, this.eventHistory.length - MAX_EVENT_HISTORY);
+    }
+  }
+
+  private extractEventData(
+    type: ObservedEventName,
+    ev: any
+  ): Record<string, any> {
+    switch (type) {
+      case "PlayerJoin":
+      case "PlayerLeave":
+        return {
+          player: this.extractPlayerName(ev?.player),
+        };
+      case "PlayerChat":
+        return {
+          sender: this.extractPlayerName(ev?.sender),
+          message: ev?.message,
+        };
+      case "BlockBroken":
+        return {
+          player: this.extractPlayerName(ev?.player),
+          block: this.extractBlockId(ev?.brokenBlockType),
+          destructionMethod: ev?.destructionMethod,
+          tool: this.extractItemStack(ev?.itemStackBeforeBreak),
+        };
+      case "BlockPlaced":
+        return {
+          player: this.extractPlayerName(ev?.player),
+          block: this.extractBlockId(ev?.placedBlockType),
+          placedUnderwater: ev?.placedUnderwater,
+          placementMethod: ev?.placementMethod,
+          item: this.extractItemStack(ev?.itemStackBeforePlace),
+        };
+      case "ItemAcquired":
+        return {
+          player: this.extractPlayerName(ev?.player),
+          item: this.extractItemType(ev?.itemType),
+          amount: ev?.acquiredAmount,
+          acquisitionMethod: ev?.acquisitionMethod,
+        };
+      case "PlayerTeleported":
+        return {
+          player: this.extractPlayerName(ev?.player),
+          cause: ev?.cause,
+          metersTravelled: ev?.metersTravelled,
+          rawItemId: ev?.rawItemId,
+        };
+      default:
+        return {};
+    }
+  }
+
+  private extractPlayerName(player: any): string | null {
+    return player?.name || player?.rawName || null;
+  }
+
+  private extractBlockId(block: any): string | null {
+    return block?.id || block?.typeId || null;
+  }
+
+  private extractItemType(itemType: any): string | null {
+    return itemType?.id || itemType?.typeId || null;
+  }
+
+  private extractItemStack(itemStack: any): Record<string, any> | null {
+    if (!itemStack) return null;
+
+    return {
+      type: itemStack.typeId || itemStack.type?.id || null,
+      amount: itemStack.amount,
+      data: itemStack.data,
     };
   }
 }
