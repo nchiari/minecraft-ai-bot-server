@@ -54,6 +54,14 @@ HTTP endpoints:
 - `POST /message`
 - `POST /command`
 
+## Security Notes
+
+- Run this server only on machines and networks you trust.
+- The Minecraft world must have cheats enabled, so connected tools can make significant changes to the world.
+- The optional HTTP API binds to `127.0.0.1` only. Keep it local unless you add authentication and understand the network exposure.
+- The `/command` endpoint can execute Minecraft commands. Do not expose it publicly.
+- Do not commit MCP client config files if they contain local paths, tokens, or account details.
+
 ## Connect From Minecraft
 
 Open a world with cheats enabled, then run this in Minecraft chat:
