@@ -68,12 +68,12 @@ tmp/
 temp/
 nul
 
-# Claude Desktop config (contains sensitive paths)
-claude_desktop_config.json
+# MCP client configs can contain sensitive local paths
+*_desktop_config.json
 
-# Claude Code files (development only)
-CLAUDE.md
-.claude/
+# Local assistant/client files (development only)
+ASSISTANT.md
+.assistant/
 
 # Documentation (development only)
 doc/

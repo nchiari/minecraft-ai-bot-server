@@ -1,0 +1,13 @@
+MC AI Bot Server
+
+This project is a modified fork of:
+
+- Mming-Lab/minecraft-bedrock-education-mcp
+  https://github.com/Mming-Lab/minecraft-bedrock-education-mcp
+
+It uses SocketBE for Minecraft Bedrock/Education WebSocket integration:
+
+- tutinoko2048/SocketBE
+  https://github.com/tutinoko2048/SocketBE
+
+Original projects retain their respective copyrights and licenses.

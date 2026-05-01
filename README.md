@@ -1,157 +1,125 @@
-# Minecraft Bedrock MCP Server
+# MC AI Bot Server
 
-[日本語版 README はこちら / Japanese README here](README_ja.md)
+A customizable MCP server for controlling Minecraft Bedrock Edition and Minecraft Education Edition through the Minecraft WebSocket interface.
 
-A TypeScript-based MCP server for controlling Minecraft Bedrock Edition and Education Edition.
-
-<a href="https://glama.ai/mcp/servers/@Mming-Lab/minecraft-bedrock-mcp-server">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/@Mming-Lab/minecraft-bedrock-mcp-server/badge" alt="Minecraft Bedrock Education MCP server" />
-</a>
+It is based on `Mming-Lab/minecraft-bedrock-education-mcp` and uses `tutinoko2048/SocketBE` for the Minecraft WebSocket integration.
 
 ## Features
 
-- **Core Tools**: Player, Agent, Blocks, World, Camera, System control
-- **Advanced Building**: 12 types of 3D shape tools (cube, sphere, helix, torus, bezier curves, etc.)
-- **Wiki Integration**: Search Minecraft Wiki for accurate information
-- **Sequence System**: Automatic chaining of multiple operations
-- **Natural Language**: Control Minecraft with natural language
+- MCP tools for player, block, world, camera, system, wiki, sequence, and building operations
+- Minecraft WebSocket connection through SocketBE
+- Optional local HTTP control API for simple automation wrappers
+- Quiet startup behavior: the Minecraft Education Agent is not spawned automatically
+- English server startup and in-game connection messages
 
-## Quick Start
+## Requirements
 
-### 1. Installation
+- Node.js 16 or newer
+- Minecraft Bedrock Edition or Minecraft Education Edition
+- A world with cheats enabled
+- An MCP-compatible client, such as Codex, Claude Code, or another client that can run local MCP servers
+
+## Install
 
 ```bash
-git clone https://github.com/Mming-Lab/minecraft-bedrock-education-mcp.git
-cd minecraft-bedrock-education-mcp
+git clone https://github.com/nchiari/minecraft-ai-bot-server.git
+cd minecraft-ai-bot-server
 npm install
 npm run build
+```
+
+## Run
+
+```bash
 npm start
 ```
 
-### 2. Minecraft Connection
+By default the WebSocket server listens on port `8001`.
 
-Open a world in Minecraft (with cheats enabled), then in chat:
+To use a different port:
+
+```bash
+node dist/server.js --port=8002
 ```
+
+To also enable the local HTTP API:
+
+```bash
+node dist/server.js --port=8001 --http-port=3001
+```
+
+HTTP endpoints:
+
+- `GET /status`
+- `POST /message`
+- `POST /command`
+
+## Connect From Minecraft
+
+Open a world with cheats enabled, then run this in Minecraft chat:
+
+```mcfunction
 /connect localhost:8001/ws
 ```
 
-### 3. AI Assistant Setup
+If the server is running on another device, replace `localhost` with that device's LAN IP address.
 
-Add to your MCP client configuration (e.g., Claude Desktop):
+## MCP Client Configuration
+
+Add this server to any MCP-compatible client, such as Codex, Claude Code, or another client that can run local MCP servers, using a command similar to:
 
 ```json
 {
   "mcpServers": {
-    "minecraft-bedrock": {
+    "mc-ai-bot": {
       "command": "node",
-      "args": ["C:/path/to/minecraft-bedrock-education-mcp/dist/server.js"]
+      "args": ["C:/path/to/mc-ai-bot-server/dist/server.js"]
     }
   }
 }
 ```
 
-**Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
-For other MCP clients, refer to their respective documentation.
+Use the absolute path for your own machine.
 
 ## Available Tools
 
-### Core Tools
-- `player` - Player management (location, items, abilities)
-- `agent` - Agent control (movement, rotation, inventory)
-- `blocks` - Block operations (place, remove, fill)
-- `world` - World control (time, weather, game rules)
-- `camera` - Camera control (viewpoint, fade, cinematic)
-- `system` - Scoreboard and UI display
-- `minecraft_wiki` - Wiki search
-- `sequence` - Multi-tool chaining execution
+Core tools:
 
-### Building Tools (12 types)
-- `build_cube` - Cube (hollow/filled)
-- `build_sphere` - Sphere
-- `build_cylinder` - Cylinder
-- `build_line` - Line
-- `build_torus` - Torus (donut)
-- `build_helix` - Helix (spiral)
-- `build_ellipsoid` - Ellipsoid
-- `build_paraboloid` - Paraboloid
-- `build_hyperboloid` - Hyperboloid
-- `build_bezier` - Bezier curve
-- `build_rotate` - Rotation transform
-- `build_transform` - Coordinate transform
+- `player` - Player management
+- `blocks` - Block placement, fill, and query operations
+- `world` - Time, weather, messages, commands, and world info
+- `camera` - Camera and cinematic controls
+- `system` - Scoreboard and screen display operations
+- `minecraft_wiki` - Minecraft Wiki search
+- `sequence` - Multi-tool sequence execution
 
-## Usage Examples
+Building tools:
 
-### Basic Usage
+- `build_cube`
+- `build_sphere`
+- `build_cylinder`
+- `build_line`
+- `build_torus`
+- `build_helix`
+- `build_ellipsoid`
+- `build_paraboloid`
+- `build_hyperboloid`
+- `build_bezier`
+- `build_rotate`
+- `build_transform`
 
-Just talk naturally to the AI assistant:
+The original `agent` tool is disabled in this version so the Minecraft Education Agent does not appear automatically.
 
-```
-Tell me my current coordinates
-→ Gets player position
+## Credits
 
-Place a diamond block in front of me
-→ Places block
+This project is based on:
 
-Build a glass dome with radius 10
-→ Sphere building (hollow)
+- [Mming-Lab/minecraft-bedrock-education-mcp](https://github.com/Mming-Lab/minecraft-bedrock-education-mcp)
+- [tutinoko2048/SocketBE](https://github.com/tutinoko2048/SocketBE)
+- [Model Context Protocol](https://modelcontextprotocol.io)
 
-Create a spiral staircase with stone bricks
-→ Helix building
-
-How many villagers are nearby?
-→ Entity search
-```
-
-### Complex Building
-
-```
-I want to build a castle
-→ AI automatically combines multiple tools to build
-
-Create a smooth bridge using bezier curves
-→ Natural curved bridge with bezier tool
-
-Make it night and start raining
-→ World control (time & weather)
-```
-
-### Automatic Error Correction
-
-```
-User: "Place a daimond_block"
-System: ❌ Unknown block: minecraft:daimond_block
-        💡 Use the minecraft_wiki tool to search for valid block IDs
-
-AI: Let me search the wiki for the correct ID...
-    → Automatically searches for and corrects to "diamond_block"
-```
-
-## Technical Specifications
-
-- **Token Optimization**: Automatic data compression (98% reduction)
-- **Error Auto-correction**: AI detects and fixes mistakes automatically
-- **Multilingual**: Japanese/English support
-
-## Requirements
-
-- **Node.js** 16 or higher
-- **Minecraft Bedrock Edition** or **Education Edition**
-- World with **cheats enabled**
-- **MCP client** (e.g., Claude Desktop)
+Original projects retain their respective copyrights and licenses.
 
 ## License
 
-GPL-3.0
-
-## Acknowledgments
-
-- [SocketBE](https://github.com/tutinoko2048/SocketBE) - Minecraft Bedrock WebSocket integration library
-- [Model Context Protocol](https://modelcontextprotocol.io) - AI integration protocol specification
-- [Anthropic](https://www.anthropic.com) - Claude AI and MCP TypeScript SDK
-
-## Related Links
-
-- [Official MCP Specification](https://modelcontextprotocol.io)
-- [Socket-BE GitHub](https://github.com/tutinoko2048/SocketBE)
-- [Minecraft Wiki](https://minecraft.wiki)
-- [Glama MCP Servers](https://glama.ai/mcp/servers)
+This project is distributed under the MIT License. See [LICENSE](LICENSE).

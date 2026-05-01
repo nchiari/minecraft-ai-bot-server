@@ -1,19 +1,12 @@
 {
-  "name": "minecraft-bedrock-education-mcp",
+  "name": "mc-ai-bot-server",
   "version": "1.0.0",
-  "description": "TypeScript-based MCP server for controlling Minecraft Bedrock Edition and Education Edition via WebSocket with hierarchical tools for player, agent, world, and building operations",
+  "description": "Customizable MCP server for controlling Minecraft Bedrock and Education Edition via WebSocket",
   "main": "dist/server.js",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Mming-Lab/minecraft-bedrock-education-mcp.git"
-  },
-  "homepage": "https://github.com/Mming-Lab/minecraft-bedrock-education-mcp#readme",
-  "bugs": {
-    "url": "https://github.com/Mming-Lab/minecraft-bedrock-education-mcp/issues"
-  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:http": "node dist/server.js --port=8001 --http-port=3001",
     "dev": "tsc && node dist/server.js",
     "debug": "tsc && node --inspect dist/server.js",
     "test": "jest",
@@ -29,16 +22,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
     "socket-be": "^2.3.1",
-    "uuid": "^9.0.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^20.0.0",
-    "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
     "eslint": "^8.0.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.0",
@@ -54,12 +45,11 @@
     "mcp",
     "model-context-protocol",
     "typescript",
-    "claude",
     "ai",
     "automation",
     "gaming"
   ],
-  "author": "mcbk-mcp contributors",
+  "author": "MC AI Bot contributors",
   "license": "MIT",
   "engines": {
     "node": ">=16.0.0"

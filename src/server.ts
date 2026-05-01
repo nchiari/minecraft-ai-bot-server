@@ -1,5 +1,6 @@
 import { Server as SocketBE, ServerEvent, World, Agent } from "socket-be";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
+import * as http from "http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -23,7 +24,6 @@ import { BuildTransformTool } from "./tools/advanced/building/build-transform";
 import { BuildBezierTool } from "./tools/advanced/building/build-bezier";
 
 // Socket-BE Core API ツール（推奨）
-import { AgentTool } from "./tools/core/agent";
 import { WorldTool } from "./tools/core/world";
 import { PlayerTool } from "./tools/core/player";
 import { BlocksTool } from "./tools/core/blocks";
@@ -47,7 +47,7 @@ import { enrichErrorWithHints } from "./utils/error-hints";
  *
  * WebSocket接続を通じてMinecraft Bedrock Editionを制御し、
  * MCP（Model Context Protocol）プロトコルを実装して
- * AIクライアント（Claude Desktopなど）との統合を提供します。
+ * MCP-compatible clientsとの統合を提供します。
  *
  * @description
  * このサーバーは以下の機能を提供します：
@@ -67,7 +67,6 @@ import { enrichErrorWithHints } from "./utils/error-hints";
  *
  * @since 1.0.0
  * @author mcbk-mcp contributors
- * @see {@link https://github.com/Mming-Lab/minecraft-bedrock-mcp-server}
  * @see {@link https://modelcontextprotocol.io/} MCP Protocol
  */
 export class MinecraftMCPServer {
@@ -154,10 +153,8 @@ export class MinecraftMCPServer {
 
     // MCPモードでない場合のみstderrにログ出力
     if (process.stdin.isTTY !== false) {
-      console.error(
-        `SocketBE Minecraft WebSocketサーバーを起動中 ポート:${port}`
-      );
-      console.error(`Minecraftから接続: /connect localhost:${port}/ws`);
+      console.error(`[MC AI Bot] Starting Minecraft WebSocket server on port ${port}.`);
+      console.error(`[MC AI Bot] Connect from Minecraft with: /connect localhost:${port}/ws`);
     }
   }
 
@@ -187,7 +184,7 @@ export class MinecraftMCPServer {
    */
   private handleServerOpen(): void {
     if (process.stdin.isTTY !== false) {
-      console.error("SocketBEサーバーが開始されました");
+      console.error("[MC AI Bot] WebSocket server started.");
     }
 
     // 10秒後に強制的にワールドとエージェントを設定
@@ -207,7 +204,7 @@ export class MinecraftMCPServer {
         const worlds = this.socketBE?.worlds;
         if (worlds && worlds instanceof Map && worlds.size > 0) {
           await this.initializeWorld(Array.from(worlds.values())[0]);
-          await this.sendWorldMessage("§a[MCP Server] 接続完了！AIツールが利用可能になりました。");
+          await this.sendWorldMessage("§a[MC AI Bot] is online.");
         }
       } catch (error) {
         // 強制設定失敗は無視してサーバー継続
@@ -225,7 +222,7 @@ export class MinecraftMCPServer {
         const worlds = this.socketBE.worlds;
         if (worlds instanceof Map && worlds.size > 0) {
           await this.initializeWorld(Array.from(worlds.values())[0]);
-          await this.sendWorldMessage("§a[MCP Server] 遅延接続完了！AIツールが利用可能になりました。");
+          await this.sendWorldMessage("§a[MC AI Bot] is online.");
         }
       }
     }, intervalMs);
@@ -238,20 +235,16 @@ export class MinecraftMCPServer {
   private async initializeWorld(world: World): Promise<void> {
     this.currentWorld = world;
 
-    // エージェントを取得
-    try {
-      this.currentAgent = await this.currentWorld.getOrCreateAgent();
-    } catch (agentError) {
-      // エージェント取得に失敗してもサーバーは継続
-      this.currentAgent = null;
-    }
+    // Keep the Education Agent disabled by default. This server should connect
+    // quietly and wait for explicit instructions.
+    this.currentAgent = null;
 
     // 仮のプレイヤー情報を設定
     if (!this.connectedPlayer) {
       this.connectedPlayer = {
         ws: null,
         name: "MinecraftPlayer",
-        id: uuidv4(),
+        id: randomUUID(),
       };
     }
 
@@ -287,31 +280,24 @@ export class MinecraftMCPServer {
    */
   private async handlePlayerJoin(ev: any): Promise<void> {
     if (process.stdin.isTTY !== false) {
-      console.error("新しいプレイヤーが参加しました:", ev.player.name);
+      console.error(`[MC AI Bot] Player joined: ${ev.player.name}`);
     }
 
     // Minecraft側に参加確認メッセージを送信
     await this.sendWorldMessage(
-      `§b[MCP Server] §f${ev.player.name}さん、ようこそ！AIアシスタントが利用可能です。`
+      `§b[MC AI Bot] §f${ev.player.name} connected.`
     );
 
     this.connectedPlayer = {
       ws: null, // SocketBEではws直接アクセス不要
       name: ev.player.name || "unknown",
-      id: uuidv4(),
+      id: randomUUID(),
     };
 
     this.currentWorld = ev.world;
 
-    // エージェントを取得
-    try {
-      if (this.currentWorld) {
-        this.currentAgent = await this.currentWorld.getOrCreateAgent();
-      }
-    } catch (error) {
-      console.error("Failed to get or create agent:", error);
-      this.currentAgent = null;
-    }
+    // Do not spawn the Education Agent when a player connects.
+    this.currentAgent = null;
 
     // 全ツールのSocket-BEインスタンスを更新
     this.updateToolsWithWorldInstances();
@@ -323,7 +309,7 @@ export class MinecraftMCPServer {
    */
   private handlePlayerLeave(ev: any): void {
     if (process.stdin.isTTY !== false) {
-      console.error(`プレイヤーが切断されました: ${ev.player.name}`);
+      console.error(`[MC AI Bot] Player left: ${ev.player.name}`);
     }
 
     this.connectedPlayer = null;
@@ -347,7 +333,6 @@ export class MinecraftMCPServer {
   private initializeTools(): void {
     this.tools = [
       // Socket-BE Core API ツール（推奨 - シンプルでAI使いやすい）
-      new AgentTool(),
       new WorldTool(),
       new PlayerTool(),
       new BlocksTool(),
@@ -592,21 +577,21 @@ export class MinecraftMCPServer {
   public async sendMessage(text: string): Promise<ToolCallResult> {
     if (!this.currentWorld) {
       if (process.stdin.isTTY !== false) {
-        console.error("エラー: プレイヤーが接続されていません");
+        console.error("[MC AI Bot] Error: no player is connected.");
       }
       return { success: false, message: "No player connected" };
     }
 
     try {
       if (process.stdin.isTTY !== false) {
-        console.error(`メッセージ送信: ${text}`);
+        console.error(`[MC AI Bot] Sending message: ${text}`);
       }
 
       await this.currentWorld.sendMessage(text);
       return { success: true, message: "Message sent successfully" };
     } catch (error) {
       if (process.stdin.isTTY !== false) {
-        console.error("メッセージ送信エラー:", error);
+        console.error("[MC AI Bot] Message send error:", error);
       }
       return { success: false, message: `Failed to send message: ${error}` };
     }
@@ -657,6 +642,26 @@ export class MinecraftMCPServer {
   public getLastCommandResponse(): any {
     return this.lastCommandResponse;
   }
+
+  /**
+   * Lightweight status snapshot for local automation wrappers.
+   */
+  public getConnectionStatus(): any {
+    return {
+      connected: !!this.currentWorld,
+      player: this.connectedPlayer?.name || null,
+      world: this.currentWorld
+        ? {
+            name: this.currentWorld.name,
+            connectedAt: this.currentWorld.connectedAt,
+            averagePing: this.currentWorld.averagePing,
+            maxPlayers: this.currentWorld.maxPlayers,
+            isValid: this.currentWorld.isValid,
+          }
+        : null,
+      agentAvailable: !!this.currentAgent,
+    };
+  }
 }
 
 // サーバーを開始
@@ -677,6 +682,19 @@ const getPort = (): number => {
   return 8001;
 };
 
+// ローカルHTTP制御ポートをコマンドライン引数から取得 (--http-port=3001)
+const getHttpPort = (): number | undefined => {
+  const portArg = process.argv.find((arg) => arg.startsWith("--http-port="));
+  if (!portArg) return undefined;
+
+  const port = parseInt(portArg.split("=")[1]);
+  if (!isNaN(port) && port > 0 && port <= 65535) {
+    return port;
+  }
+
+  return undefined;
+};
+
 // 言語設定をコマンドライン引数から取得
 const getLocale = (): SupportedLocale | undefined => {
   // コマンドライン引数から取得 (--lang=ja または --lang=en)
@@ -694,8 +712,94 @@ const getLocale = (): SupportedLocale | undefined => {
 
 const port = getPort();
 const locale = getLocale();
-server.start(port, locale);
+const httpPort = getHttpPort();
+
+server.start(port, locale).then(() => {
+  if (httpPort) {
+    startLocalHttpApi(server, httpPort);
+  }
+}).catch((error) => {
+  console.error("Failed to start Minecraft MCP server:", error);
+  process.exit(1);
+});
 
 process.on("SIGINT", () => {
   process.exit(0);
 });
+
+function startLocalHttpApi(server: MinecraftMCPServer, port: number): void {
+  const api = http.createServer(async (req, res) => {
+    try {
+      setJsonHeaders(res);
+
+      if (req.method === "GET" && req.url === "/status") {
+        res.end(JSON.stringify(server.getConnectionStatus()));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/message") {
+        const body = await readJsonBody(req);
+        const result = await server.sendMessage(String(body.message || ""));
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/command") {
+        const body = await readJsonBody(req);
+        const rawCommand = String(body.command || "");
+        const command = rawCommand.startsWith("/") ? rawCommand.slice(1) : rawCommand;
+        const result = await server.executeCommand(command);
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end(JSON.stringify({ success: false, message: "Not found" }));
+    } catch (error) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  });
+
+  api.listen(port, "127.0.0.1", () => {
+    console.error(`Local HTTP control API listening on http://127.0.0.1:${port}`);
+    console.error("Endpoints: GET /status, POST /message, POST /command");
+  });
+}
+
+function setJsonHeaders(res: http.ServerResponse): void {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
+}
+
+function readJsonBody(req: http.IncomingMessage): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+
+    req.on("data", (chunk) => {
+      data += chunk;
+      if (data.length > 1024 * 1024) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+      }
+    });
+
+    req.on("end", () => {
+      if (!data.trim()) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(data));
+      } catch (error) {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+
+    req.on("error", reject);
+  });
+}
